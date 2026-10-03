@@ -13,7 +13,10 @@ async function probe(node, { timeoutMs, payload }) {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return fail(`HTTP ${res.status}`);
+    if (!res.ok) {
+      await res.body?.cancel();
+      return fail(`HTTP ${res.status}`);
+    }
 
     const body = await res.json();
     if (body.error) return fail(`rpc error: ${body.error.message || 'unknown'}`.slice(0, 200));

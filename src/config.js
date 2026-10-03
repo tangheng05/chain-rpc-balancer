@@ -17,35 +17,80 @@ const DEFAULTS = {
     bind: [':80'],
     redirectHttps: false,
     cors: true,
+    corsCredentials: false,
     statsBind: '127.0.0.1:8404',
     statsUser: 'admin',
     statsPassword: 'change-me',
   },
 };
 
+const NAME = /^[A-Za-z0-9_.-]+$/;
+const HOST = /^[A-Za-z0-9.:[\]-]+$/;
+// Values are written straight into haproxy.cfg, so no whitespace, comments or quotes.
+const CFG_TOKEN = /^[^\s#"'\\]+$/;
+
+function fail(msg) {
+  throw new Error(`config: ${msg}`);
+}
+
+function checkPort(value, label) {
+  if (!Number.isInteger(value) || value < 1 || value > 65535) fail(`${label} must be a port number`);
+}
+
+function checkPositive(value, label) {
+  if (!Number.isFinite(value) || value <= 0) fail(`${label} must be a positive number`);
+}
+
 function normalize(raw) {
-  if (!Array.isArray(raw.nodes) || raw.nodes.length === 0) {
-    throw new Error('config: "nodes" must be a non-empty array');
+  if (!raw || !Array.isArray(raw.nodes) || raw.nodes.length === 0) {
+    fail('"nodes" must be a non-empty array');
   }
   const agent = { ...DEFAULTS.agent, ...raw.agent };
   const health = { ...DEFAULTS.health, ...raw.health };
   const haproxy = { ...DEFAULTS.haproxy, ...raw.haproxy };
   if (typeof haproxy.bind === 'string') haproxy.bind = [haproxy.bind];
 
-  const seen = new Set();
+  if (!HOST.test(agent.host)) fail('agent.host is not a valid address');
+  checkPort(agent.statusPort, 'agent.statusPort');
+  checkPort(agent.basePort, 'agent.basePort');
+  checkPositive(agent.intervalMs, 'agent.intervalMs');
+  checkPositive(health.timeoutMs, 'health.timeoutMs');
+  checkPositive(health.maxBlockAgeSec, 'health.maxBlockAgeSec');
+  if (!Number.isInteger(health.maxLagBlocks) || health.maxLagBlocks < 0) {
+    fail('health.maxLagBlocks must be a non-negative integer');
+  }
+  if (!health.payload || typeof health.payload !== 'object') fail('health.payload must be an object');
+
+  if (!Array.isArray(haproxy.bind) || haproxy.bind.length === 0) fail('haproxy.bind must not be empty');
+  for (const b of haproxy.bind) {
+    if (typeof b !== 'string' || !b.trim() || /[\r\n#]/.test(b)) fail(`invalid bind line "${b}"`);
+  }
+  if (!CFG_TOKEN.test(haproxy.statsBind)) fail('haproxy.statsBind is invalid');
+  if (!CFG_TOKEN.test(haproxy.statsUser) || haproxy.statsUser.includes(':')) {
+    fail('haproxy.statsUser must not contain spaces, quotes, "#" or ":"');
+  }
+
+  const seenNames = new Set();
+  const seenPorts = new Set([agent.statusPort]);
   const nodes = raw.nodes.map((n, i) => {
-    if (!n.name || !/^[A-Za-z0-9_.-]+$/.test(n.name)) {
-      throw new Error(`config: node #${i} needs a name of letters, digits, "_", "." or "-"`);
+    if (!n || !NAME.test(n.name || '')) {
+      fail(`node #${i} needs a name of letters, digits, "_", "." or "-"`);
     }
-    if (seen.has(n.name)) throw new Error(`config: duplicate node name "${n.name}"`);
-    seen.add(n.name);
-    if (!n.host) throw new Error(`config: node "${n.name}" needs a host`);
-    return {
+    if (seenNames.has(n.name)) fail(`duplicate node name "${n.name}"`);
+    seenNames.add(n.name);
+    if (!HOST.test(n.host || '')) fail(`node "${n.name}" needs a valid host`);
+
+    const node = {
       name: n.name,
       host: n.host,
-      port: n.port || 8090,
-      checkPort: n.checkPort || agent.basePort + i,
+      port: n.port ?? 8090,
+      checkPort: n.checkPort ?? agent.basePort + i,
     };
+    checkPort(node.port, `node "${n.name}" port`);
+    checkPort(node.checkPort, `node "${n.name}" checkPort`);
+    if (seenPorts.has(node.checkPort)) fail(`agent port ${node.checkPort} is used twice`);
+    seenPorts.add(node.checkPort);
+    return node;
   });
 
   return { agent, health, haproxy, nodes };
@@ -55,4 +100,4 @@ function loadConfig(path) {
   return normalize(JSON.parse(fs.readFileSync(path, 'utf8')));
 }
 
-module.exports = { loadConfig, normalize, DEFAULTS };
+module.exports = { loadConfig, normalize, DEFAULTS, CFG_TOKEN };

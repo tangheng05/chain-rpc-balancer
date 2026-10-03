@@ -41,8 +41,8 @@ If **every** node's head block is stale, the chain itself has stopped. In that c
 On the HAProxy side:
 
 - **Rise/fall:** a node must pass 3 checks to come back and fail 2 to be removed. It ramps up over 30s (`slowstart`) after returning.
-- **Passive checks:** `observe layer7` removes a node right away after 3 consecutive 5xx responses or timeouts, without waiting for the next check.
-- **Reads** go to `be_read`. A request that fails on one node (connection error, empty reply, timeout, 502/503/504) is retried on another node.
+- **Passive checks:** `observe layer7` counts 5 consecutive 5xx responses or timeouts from a node as a failed health check and switches to 1s checks, so a failing node is removed within seconds.
+- **Reads** go to `be_read`. A request that fails on one node (connection error, empty reply, 502/503/504) is retried on another node. Response timeouts are deliberately **not** retried: otherwise one very slow query would be replayed on every node and could knock them all out.
 - **Broadcasts** are requests whose body contains `broadcast_transaction`. They go to `be_broadcast`, which retries only if the connection never opened. A broadcast that timed out may already have reached the network, so sending it again would produce a "duplicate transaction" error.
 - **`/lb-health`** returns 503 when no node is up. Point uptime monitors or an upstream load balancer at it.
 
@@ -90,6 +90,7 @@ curl -s 127.0.0.1:9100 | jq
     "bind": [":80", ":443 ssl crt /etc/haproxy/certs/site.pem"],
     "redirectHttps": true,
     "cors": true,
+    "corsCredentials": false,
     "statsBind": "127.0.0.1:8404",
     "statsUser": "admin",
     "statsPassword": "change-me"
@@ -100,10 +101,12 @@ curl -s 127.0.0.1:9100 | jq
 }
 ```
 
+All values are validated before anything is generated, and anything that could break or inject into `haproxy.cfg` (spaces, newlines, quotes, `#`) is rejected.
+
 - Each node gets its own agent port, `basePort + index`. Set `checkPort` on a node to pick the port yourself.
 - `STATS_PASSWORD` in the environment overrides `haproxy.statsPassword`.
 - To terminate TLS on HAProxy, add a bind line such as `":443 ssl crt /etc/haproxy/certs/site.pem"`. Set `redirectHttps` to send plain HTTP to HTTPS (308, so POST bodies survive the redirect).
-- `cors` (on by default) reflects the caller's `Origin` and answers `OPTIONS` preflights at the balancer, so browser dapps can call the API directly.
+- `cors` (on by default) reflects the caller's `Origin` and answers `OPTIONS` preflights at the balancer, so browser dapps can call the API directly. Set `corsCredentials` only if browser clients send cookies or auth headers with `credentials: "include"`; with a reflected origin it lets any site make credentialed requests.
 - `health.payload` sets the JSON-RPC request the agent sends. The default uses the legacy `call` API, which works on older steemd builds:
 
   ```json
@@ -130,11 +133,12 @@ sudo systemctl restart chain-rpc-health && sudo systemctl reload haproxy
 - [ ] Keep the stats page bound to `127.0.0.1` (the default) and open it through an SSH tunnel: `ssh -L 8404:127.0.0.1:8404 lb`.
 - [ ] Set a long, random `STATS_PASSWORD`.
 - [ ] If a CDN or reverse proxy sits in front, allow only its IP ranges on 80/443.
-- [ ] Monitor `/lb-health` and the `chain-rpc-health` service. If the agent stops, every check fails and HAProxy takes all nodes out. The unit restarts it within a second, but you should still alert on it.
+- [ ] Monitor `/lb-health` and the `chain-rpc-health` service. If the agent process dies, every check fails and HAProxy takes all nodes out; systemd restarts it within a second, but alert on it anyway. If the agent is running but its check loop stalls, it fails open (reports every node up, `"stale": true` in the status JSON) so the balancer keeps serving traffic instead of going dark.
 - [ ] To remove the load balancer as a single point of failure, run two of them behind a floating IP with keepalived.
 
 ## Notes
 
+- Runtime control: `echo "show servers state" | sudo socat stdio /run/haproxy/admin.sock`, or `set server be_read/node1 state maint` to drain a node by hand.
 - WebSocket connections are supported (`timeout tunnel 1h`). Once a WebSocket is open, its messages aren't inspected, so broadcast routing and retries apply only to HTTP requests.
 - HAProxy can only retry requests that fit in its buffer (16 KB by default). Very large request bodies are not retried.
 
@@ -146,7 +150,7 @@ node src/gen-haproxy.js nodes.example.json   # print the generated config
 node src/agent.js nodes.example.json         # run the agent locally
 ```
 
-CI runs the tests on Node 18, 20 and 22, and validates the generated config with `haproxy -c` on HAProxy 2.8 and 3.0.
+CI runs the tests on Node 18, 20, 22 and 24, validates the generated config with `haproxy -c` on HAProxy 2.4, 2.8, 3.0 and 3.2, and runs shellcheck on the installer.
 
 ## License
 

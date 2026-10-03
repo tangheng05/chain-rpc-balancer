@@ -3,6 +3,7 @@
 global
     log /dev/log local0
     maxconn 4096
+    stats socket /run/haproxy/admin.sock mode 660 level admin
     user haproxy
     group haproxy
 
@@ -31,15 +32,16 @@ frontend rpc
     use_backend be_broadcast if is_broadcast
     default_backend be_read
 
-# Reads are idempotent, so failures are retried on another node.
+# Reads are idempotent, so failures are retried on another node. Timeouts are not
+# retried, so one slow query can't spread to (and fail-check) every node.
 backend be_read
     balance leastconn
     option httpchk GET /
     http-check expect status 200
-    retry-on conn-failure empty-response response-timeout 502 503 504
+    retry-on conn-failure empty-response 502 503 504
     retries 2
     option redispatch 1
-    default-server inter 3s fall 2 rise 3 slowstart 30s observe layer7 error-limit 3 on-error mark-down
+    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check
 {{SERVER_LINES}}
 
 # A timed-out broadcast may already be in the mempool, so only retry when the connection never opened.
@@ -50,7 +52,7 @@ backend be_broadcast
     retry-on conn-failure
     retries 2
     option redispatch 1
-    default-server inter 3s fall 2 rise 3 slowstart 30s observe layer7 error-limit 3 on-error mark-down
+    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check
 {{SERVER_LINES}}
 
 listen stats

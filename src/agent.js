@@ -10,17 +10,28 @@ function listen(server, port, host) {
   });
 }
 
-function createAgent(config, { log = console.log } = {}) {
+function createAgent(config, { log = console.log, clock = Date.now } = {}) {
   const { agent, health, nodes } = config;
   const state = new Map(nodes.map((n) => [n.name, { up: false, reason: 'starting' }]));
   let lastRunAt = null;
   let timer = null;
   let stopped = false;
   const servers = [];
+  const staleAfterMs = agent.intervalMs * 3 + health.timeoutMs;
+
+  const isStale = () => lastRunAt !== null && clock() - lastRunAt > staleAfterMs;
+
+  // A stalled loop fails open so an agent bug can't take every node out.
+  function current(name) {
+    if (isStale()) {
+      return { up: true, reason: 'agent results are stale, failing open' };
+    }
+    return state.get(name);
+  }
 
   async function tick() {
     const results = await Promise.all(nodes.map((n) => probe(n, health)));
-    const now = Date.now();
+    const now = clock();
     const verdicts = evaluate(results, now, health);
     verdicts.forEach((v, i) => {
       const prev = state.get(v.name);
@@ -42,7 +53,7 @@ function createAgent(config, { log = console.log } = {}) {
   async function start() {
     for (const node of nodes) {
       const server = http.createServer((req, res) => {
-        const s = state.get(node.name);
+        const s = current(node.name);
         res.writeHead(s.up ? 200 : 503, { 'content-type': 'text/plain' });
         res.end(`${s.reason}\n`);
       });
@@ -50,7 +61,7 @@ function createAgent(config, { log = console.log } = {}) {
     }
     const status = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ lastRunAt, nodes: [...state.values()] }, null, 2));
+      res.end(JSON.stringify({ lastRunAt, stale: isStale(), nodes: [...state.values()] }, null, 2));
     });
     servers.push(await listen(status, agent.statusPort, agent.host));
     await loop();
@@ -59,7 +70,15 @@ function createAgent(config, { log = console.log } = {}) {
   async function stop() {
     stopped = true;
     clearTimeout(timer);
-    await Promise.all(servers.map((s) => new Promise((r) => s.close(r))));
+    await Promise.all(
+      servers.map(
+        (s) =>
+          new Promise((r) => {
+            s.close(r);
+            s.closeAllConnections();
+          }),
+      ),
+    );
   }
 
   return { start, stop, tick, state };

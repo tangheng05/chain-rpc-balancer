@@ -4,15 +4,18 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [18, 20, 22]
+        node: [18, 20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
@@ -21,11 +24,29 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        haproxy: ['2.8', '3.0']
+        haproxy: ['2.4', '2.8', '3.0', '3.2']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
-      - run: STATS_PASSWORD=ci-only node src/gen-haproxy.js nodes.example.json > haproxy.cfg
-      - run: docker run --rm -v "$PWD/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" haproxy:${{ matrix.haproxy }} haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+          node-version: 22
+      - name: Generate configs
+        run: |
+          STATS_PASSWORD=ci-only node src/gen-haproxy.js nodes.example.json > haproxy.cfg
+          node -e '
+            const c = require("./nodes.example.json");
+            c.haproxy = { ...c.haproxy, redirectHttps: true, corsCredentials: true };
+            require("fs").writeFileSync("full.json", JSON.stringify(c));'
+          STATS_PASSWORD=ci-only node src/gen-haproxy.js full.json > haproxy-full.cfg
+      - name: haproxy -c
+        run: |
+          for f in haproxy.cfg haproxy-full.cfg; do
+            docker run --rm -v "$PWD/$f:/usr/local/etc/haproxy/haproxy.cfg:ro" \
+              haproxy:${{ matrix.haproxy }} haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+          done
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: shellcheck deploy/install.sh

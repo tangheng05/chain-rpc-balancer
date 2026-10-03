@@ -45,3 +45,30 @@ test('check ports flip to 503 when a node falls behind and back to 200 when it r
     b.close();
   }
 });
+
+test('fails open when the check loop stops updating', async () => {
+  const a = await mockNode(() => ({ error: 'broken' }));
+  const [statusPort, checkA] = [await freePort(), await freePort()];
+  const config = normalize({
+    agent: { statusPort, intervalMs: 60000 },
+    health: { timeoutMs: 300 },
+    nodes: [{ name: 'a', host: '127.0.0.1', port: a.port, checkPort: checkA }],
+  });
+  let fakeNow = Date.now();
+  const agent = createAgent(config, { log: () => {}, clock: () => fakeNow });
+
+  try {
+    await agent.start();
+    assert.equal((await fetch(`http://127.0.0.1:${checkA}/`)).status, 503);
+
+    fakeNow += 3 * 60000 + 300 + 1;
+    const res = await fetch(`http://127.0.0.1:${checkA}/`);
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /failing open/);
+    const status = await fetch(`http://127.0.0.1:${statusPort}/`).then((r) => r.json());
+    assert.equal(status.stale, true);
+  } finally {
+    await agent.stop();
+    a.close();
+  }
+});
