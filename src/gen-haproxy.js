@@ -29,6 +29,22 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
     throw new Error('stats password must be non-empty with no spaces, quotes, "#" or "\\"');
   }
 
+  const statusToken = env.STATUS_TOKEN || haproxy.statusToken;
+  if (haproxy.statusPath && statusToken && !CFG_TOKEN.test(statusToken)) {
+    throw new Error('status token must have no spaces, quotes, "#" or "\\"');
+  }
+  const statusFrontend = haproxy.statusPath
+    ? [
+        `    acl is_status path ${haproxy.statusPath}`,
+        statusToken &&
+          `    http-request deny deny_status 401 if is_status !{ req.hdr(x-status-token) -m str ${statusToken} }`,
+        '    use_backend be_status if is_status',
+      ].filter(Boolean)
+    : [];
+  const statusBackend = haproxy.statusPath
+    ? ['backend be_status', `    server agent ${agent.host}:${agent.statusPort}`, '']
+    : [];
+
   const servers = nodes.map(
     (n) => `    server ${n.name} ${n.host}:${n.port} check addr ${agent.host} port ${n.checkPort}`,
   );
@@ -39,6 +55,8 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
       : [],
     CORS_LINES: haproxy.cors ? corsLines(haproxy) : [],
     SERVER_LINES: servers,
+    STATUS_FRONTEND_LINES: statusFrontend,
+    STATUS_BACKEND_LINES: statusBackend,
     STATS_BIND: [haproxy.statsBind],
     STATS_AUTH: [`${haproxy.statsUser}:${password}`],
   };
@@ -60,6 +78,9 @@ if (require.main === module) {
     const config = loadConfig(process.argv[2] || 'nodes.json');
     if (!process.env.STATS_PASSWORD && config.haproxy.statsPassword === 'change-me') {
       console.error('warning: stats password is the default; set STATS_PASSWORD');
+    }
+    if (config.haproxy.statusPath && !process.env.STATUS_TOKEN && !config.haproxy.statusToken) {
+      console.error(`warning: ${config.haproxy.statusPath} is public; set STATUS_TOKEN to protect it`);
     }
     process.stdout.write(render(config));
   } catch (err) {

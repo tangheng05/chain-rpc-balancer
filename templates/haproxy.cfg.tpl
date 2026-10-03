@@ -26,6 +26,7 @@ frontend rpc
     monitor fail if { nbsrv(be_read) lt 1 }
 {{REDIRECT_LINES}}
     http-request set-header X-Forwarded-Proto https if { ssl_fc }
+{{STATUS_FRONTEND_LINES}}
 {{CORS_LINES}}
     option http-buffer-request
     acl is_broadcast req.body -m sub broadcast_transaction
@@ -55,6 +56,7 @@ backend be_broadcast
     default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check
 {{SERVER_LINES}}
 
+{{STATUS_BACKEND_LINES}}
 listen stats
     bind {{STATS_BIND}}
     stats enable

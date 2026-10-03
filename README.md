@@ -127,6 +127,21 @@ sudo haproxy -c -f /tmp/haproxy.cfg && sudo cp /tmp/haproxy.cfg /etc/haproxy/hap
 sudo systemctl restart chain-rpc-health && sudo systemctl reload haproxy
 ```
 
+## Monitoring and alerts
+
+The agent's status JSON (node state, head block, reason, latency, and an `up`/`total` summary) is only on `127.0.0.1` by default. To let an external monitor poll it, set `haproxy.statusPath` and protect it with a token:
+
+```json
+"haproxy": { "statusPath": "/lb-status" }
+```
+
+```bash
+sudo STATS_PASSWORD=... STATUS_TOKEN=$(openssl rand -hex 24) ./deploy/install.sh nodes.json
+curl -H "X-Status-Token: $STATUS_TOKEN" https://rpc.example.com/lb-status
+```
+
+Requests without the right `X-Status-Token` header get `401`. Without a token the path is public (the JSON contains node names and block numbers, not addresses). A monitor can alert when `summary.up < summary.total`, or when `stale` is `true`.
+
 ## Hardening checklist
 
 - [ ] Firewall each node's RPC port so only the load balancer's IP can reach it. Otherwise clients can bypass the balancer.

@@ -58,3 +58,16 @@ test('HTTPS redirect is only added when enabled', () => {
 test('response timeouts are never retried', () => {
   assert.doesNotMatch(render(example, { env: {} }), /retry-on .*response-timeout/);
 });
+
+test('status path is off by default', () => {
+  assert.doesNotMatch(render(oneNode(), { env: {} }), /be_status|is_status/);
+});
+
+test('status path routes to the agent and requires the token when one is set', () => {
+  const cfg = render(oneNode({ statusPath: '/lb-status' }), { env: { STATUS_TOKEN: 't0k' } });
+  assert.match(cfg, /acl is_status path \/lb-status\n/);
+  assert.match(cfg, /deny deny_status 401 if is_status !\{ req.hdr\(x-status-token\) -m str t0k \}/);
+  assert.match(cfg, /use_backend be_status if is_status\n[\s\S]*use_backend be_broadcast/);
+  assert.match(cfg, /backend be_status\n {4}server agent 127.0.0.1:9100\n/);
+  assert.throws(() => render(oneNode({ statusPath: '/s' }), { env: { STATUS_TOKEN: 'a b' } }), /status token/);
+});

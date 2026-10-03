@@ -53,3 +53,9 @@ test('rejects bind lines with newlines or comments', () => {
   assert.throws(() => normalize({ haproxy: { bind: [':80\n    bind :81'] }, nodes: [node()] }), /bind/);
   assert.throws(() => normalize({ haproxy: { bind: [] }, nodes: [node()] }), /bind/);
 });
+
+test('rejects status paths that could inject config', () => {
+  assert.throws(() => normalize({ haproxy: { statusPath: 'lb-status' }, nodes: [node()] }), /statusPath/);
+  assert.throws(() => normalize({ haproxy: { statusPath: '/a b' }, nodes: [node()] }), /statusPath/);
+  assert.equal(normalize({ haproxy: { statusPath: '/lb-status' }, nodes: [node()] }).haproxy.statusPath, '/lb-status');
+});

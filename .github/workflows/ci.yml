@@ -35,9 +35,9 @@ jobs:
           STATS_PASSWORD=ci-only node src/gen-haproxy.js nodes.example.json > haproxy.cfg
           node -e '
             const c = require("./nodes.example.json");
-            c.haproxy = { ...c.haproxy, redirectHttps: true, corsCredentials: true };
+            c.haproxy = { ...c.haproxy, redirectHttps: true, corsCredentials: true, statusPath: "/lb-status" };
             require("fs").writeFileSync("full.json", JSON.stringify(c));'
-          STATS_PASSWORD=ci-only node src/gen-haproxy.js full.json > haproxy-full.cfg
+          STATS_PASSWORD=ci-only STATUS_TOKEN=ci-token node src/gen-haproxy.js full.json > haproxy-full.cfg
       - name: haproxy -c
         run: |
           for f in haproxy.cfg haproxy-full.cfg; do

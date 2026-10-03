@@ -21,10 +21,13 @@ const DEFAULTS = {
     statsBind: '127.0.0.1:8404',
     statsUser: 'admin',
     statsPassword: 'change-me',
+    statusPath: null,
+    statusToken: null,
   },
 };
 
 const NAME = /^[A-Za-z0-9_.-]+$/;
+const URL_PATH = /^\/[A-Za-z0-9._~/-]*$/;
 const HOST = /^[A-Za-z0-9.:[\]-]+$/;
 // Values are written straight into haproxy.cfg, so no whitespace, comments or quotes.
 const CFG_TOKEN = /^[^\s#"'\\]+$/;
@@ -68,6 +71,10 @@ function normalize(raw) {
   if (!CFG_TOKEN.test(haproxy.statsBind)) fail('haproxy.statsBind is invalid');
   if (!CFG_TOKEN.test(haproxy.statsUser) || haproxy.statsUser.includes(':')) {
     fail('haproxy.statsUser must not contain spaces, quotes, "#" or ":"');
+  }
+
+  if (haproxy.statusPath !== null && !URL_PATH.test(haproxy.statusPath)) {
+    fail('haproxy.statusPath must be a plain path like "/lb-status"');
   }
 
   const seenNames = new Set();

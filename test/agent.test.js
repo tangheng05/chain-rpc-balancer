@@ -38,6 +38,7 @@ test('check ports flip to 503 when a node falls behind and back to 200 when it r
 
     const status = await fetch(`http://127.0.0.1:${statusPort}/`).then((r) => r.json());
     assert.equal(status.nodes.length, 2);
+    assert.deepEqual(status.summary, { up: 2, total: 2 });
     assert.ok(status.lastRunAt);
   } finally {
     await agent.stop();

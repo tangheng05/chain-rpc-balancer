@@ -61,7 +61,9 @@ function createAgent(config, { log = console.log, clock = Date.now } = {}) {
     }
     const status = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ lastRunAt, stale: isStale(), nodes: [...state.values()] }, null, 2));
+      const list = [...state.values()];
+      const summary = { up: list.filter((n) => n.up).length, total: list.length };
+      res.end(JSON.stringify({ lastRunAt, stale: isStale(), summary, nodes: list }, null, 2));
     });
     servers.push(await listen(status, agent.statusPort, agent.host));
     await loop();
