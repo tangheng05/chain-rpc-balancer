@@ -1,0 +1,26 @@
+{
+  "agent": {
+    "host": "127.0.0.1",
+    "statusPort": 9100,
+    "basePort": 9101,
+    "intervalMs": 3000
+  },
+  "health": {
+    "timeoutMs": 2000,
+    "maxBlockAgeSec": 30,
+    "maxLagBlocks": 10
+  },
+  "haproxy": {
+    "bind": [":80"],
+    "redirectHttps": false,
+    "cors": true,
+    "statsBind": "127.0.0.1:8404",
+    "statsUser": "admin",
+    "statsPassword": "change-me"
+  },
+  "nodes": [
+    { "name": "node1", "host": "10.0.0.11", "port": 8090 },
+    { "name": "node2", "host": "10.0.0.12", "port": 8090 },
+    { "name": "node3", "host": "10.0.0.13", "port": 8090 }
+  ]
+}

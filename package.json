@@ -1,0 +1,16 @@
+{
+  "name": "chain-rpc-balancer",
+  "version": "0.1.0",
+  "description": "Health-aware HAProxy load balancer for blockchain JSON-RPC nodes",
+  "license": "MIT",
+  "author": "Tang Heng",
+  "private": true,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node src/agent.js nodes.json",
+    "gen": "node src/gen-haproxy.js nodes.json",
+    "test": "node --test test/*.test.js"
+  }
+}
