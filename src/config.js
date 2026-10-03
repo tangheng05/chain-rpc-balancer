@@ -23,11 +23,15 @@ const DEFAULTS = {
     statsPassword: 'change-me',
     statusPath: null,
     statusToken: null,
+    maxConnPerNode: null,
+    clientIpHeader: null,
+    logBodyBytes: 0,
   },
 };
 
 const NAME = /^[A-Za-z0-9_.-]+$/;
 const URL_PATH = /^\/[A-Za-z0-9._~/-]*$/;
+const HEADER = /^[A-Za-z0-9-]+$/;
 const HOST = /^[A-Za-z0-9.:[\]-]+$/;
 // Values are written straight into haproxy.cfg, so no whitespace, comments or quotes.
 const CFG_TOKEN = /^[^\s#"'\\]+$/;
@@ -75,6 +79,16 @@ function normalize(raw) {
 
   if (haproxy.statusPath !== null && !URL_PATH.test(haproxy.statusPath)) {
     fail('haproxy.statusPath must be a plain path like "/lb-status"');
+  }
+
+  if (haproxy.maxConnPerNode !== null && !(Number.isInteger(haproxy.maxConnPerNode) && haproxy.maxConnPerNode > 0)) {
+    fail('haproxy.maxConnPerNode must be a positive integer or null');
+  }
+  if (haproxy.clientIpHeader !== null && !HEADER.test(haproxy.clientIpHeader)) {
+    fail('haproxy.clientIpHeader must be a header name like "CF-Connecting-IP"');
+  }
+  if (!Number.isInteger(haproxy.logBodyBytes) || haproxy.logBodyBytes < 0 || haproxy.logBodyBytes > 1024) {
+    fail('haproxy.logBodyBytes must be an integer from 0 to 1024');
   }
 
   const seenNames = new Set();

@@ -48,6 +48,10 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
   const servers = nodes.map(
     (n) => `    server ${n.name} ${n.host}:${n.port} check addr ${agent.host} port ${n.checkPort}`,
   );
+  const captures = [
+    haproxy.clientIpHeader && `    http-request capture req.hdr(${haproxy.clientIpHeader}) len 46`,
+    haproxy.logBodyBytes > 0 && `    http-request capture req.body len ${haproxy.logBodyBytes}`,
+  ].filter(Boolean);
   const values = {
     BIND_LINES: haproxy.bind.map((b) => `    bind ${b}`),
     REDIRECT_LINES: haproxy.redirectHttps
@@ -55,6 +59,8 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
       : [],
     CORS_LINES: haproxy.cors ? corsLines(haproxy) : [],
     SERVER_LINES: servers,
+    CAPTURE_LINES: captures,
+    NODE_LIMIT: haproxy.maxConnPerNode ? [` maxconn ${haproxy.maxConnPerNode}`] : [],
     STATUS_FRONTEND_LINES: statusFrontend,
     STATUS_ROUTE_LINES: statusRoute,
     STATUS_BACKEND_LINES: statusBackend,

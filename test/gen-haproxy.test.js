@@ -7,11 +7,11 @@ const { loadConfig, normalize } = require('../src/config');
 const example = loadConfig(path.join(__dirname, '..', 'nodes.example.json'));
 const oneNode = (haproxy = {}) => normalize({ haproxy, nodes: [{ name: 'n', host: '10.0.0.1' }] });
 
-test('every node appears in both backends with its agent check port', () => {
+test('every node appears in every backend with its agent check port', () => {
   const cfg = render(example, { env: {} });
   for (const n of example.nodes) {
     const line = `server ${n.name} ${n.host}:${n.port} check addr 127.0.0.1 port ${n.checkPort}`;
-    assert.equal(cfg.split(line).length - 1, 2, `${n.name} should be in be_read and be_broadcast`);
+    assert.equal(cfg.split(line).length - 1, 3, `${n.name} should be in be_read, be_broadcast and be_ws`);
   }
   assert.doesNotMatch(cfg, /{{|}}/);
 });
@@ -70,4 +70,18 @@ test('status path routes to the agent and requires the token when one is set', (
   assert.match(cfg, /use_backend be_status if is_status\n[\s\S]*use_backend be_broadcast/);
   assert.match(cfg, /backend be_status\n {4}server agent 127.0.0.1:9100\n/);
   assert.throws(() => render(oneNode({ statusPath: '/s' }), { env: { STATUS_TOKEN: 'a b' } }), /status token/);
+});
+
+test('per-node connection limit is off by default and skips websockets', () => {
+  assert.doesNotMatch(render(oneNode(), { env: {} }), /fail-check maxconn/);
+  const cfg = render(oneNode({ maxConnPerNode: 4 }), { env: {} });
+  assert.equal(cfg.split('on-error fail-check maxconn 4\n').length - 1, 2);
+  assert.match(cfg, /backend be_ws\n[\s\S]*slowstart 30s\n {4}server n/);
+  assert.match(cfg, /use_backend be_ws if is_websocket\n {4}use_backend be_broadcast/);
+});
+
+test('client IP header and request body are captured for the log when set', () => {
+  assert.doesNotMatch(render(oneNode(), { env: {} }), /http-request capture/);
+  const cfg = render(oneNode({ clientIpHeader: 'CF-Connecting-IP', logBodyBytes: 200 }), { env: {} });
+  assert.match(cfg, /http-request capture req.hdr\(CF-Connecting-IP\) len 46\n {4}http-request capture req.body len 200\n/);
 });

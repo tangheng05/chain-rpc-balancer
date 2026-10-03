@@ -44,6 +44,7 @@ On the HAProxy side:
 - **Passive checks:** `observe layer7` counts 5 consecutive 5xx responses or timeouts from a node as a failed health check and switches to 1s checks, so a failing node is removed within seconds.
 - **Reads** go to `be_read`. A request that fails on one node (connection error, empty reply, 502/503/504) is retried on another node. Response timeouts are deliberately **not** retried: otherwise one very slow query would be replayed on every node and could knock them all out.
 - **Broadcasts** are requests whose body contains `broadcast_transaction`. They go to `be_broadcast`, which retries only if the connection never opened. A broadcast that timed out may already have reached the network, so sending it again would produce a "duplicate transaction" error.
+- **WebSockets** (requests with `Upgrade: websocket`) go to `be_ws`, which has no per-node connection limit.
 - **`/lb-health`** returns 503 when no node is up. Point uptime monitors or an upstream load balancer at it.
 
 ## Quick start
@@ -107,6 +108,8 @@ All values are validated before anything is generated, and anything that could b
 - `STATS_PASSWORD` in the environment overrides `haproxy.statsPassword`.
 - To terminate TLS on HAProxy, add a bind line such as `":443 ssl crt /etc/haproxy/certs/site.pem"`. Set `redirectHttps` to send plain HTTP to HTTPS (308, so POST bodies survive the redirect).
 - `cors` (on by default) reflects the caller's `Origin` and answers `OPTIONS` preflights at the balancer, so browser dapps can call the API directly. Set `corsCredentials` only if browser clients send cookies or auth headers with `credentials: "include"`; with a reflected origin it lets any site make credentialed requests.
+- `maxConnPerNode` caps how many requests HAProxy sends to one node at once; the rest wait in HAProxy for up to 10s. On steemd most reads share one database thread, so a burst of heavy queries can freeze every node; a small cap (4–8) keeps each node responsive. Off by default.
+- `clientIpHeader` logs the real client IP when a CDN sits in front, e.g. `"CF-Connecting-IP"` for Cloudflare. `logBodyBytes` logs the first N bytes of each request body (up to 1024), which shows the API method being called. Both appear in braces near the end of each HAProxy log line.
 - `health.payload` sets the JSON-RPC request the agent sends. The default uses the legacy `call` API, which works on older steemd builds:
 
   ```json

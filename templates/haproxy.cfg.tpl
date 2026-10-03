@@ -19,6 +19,7 @@ defaults
     timeout http-request 10s
     timeout tunnel 1h
     timeout check 3s
+    timeout queue 10s
 
 frontend rpc
 {{BIND_LINES}}
@@ -30,7 +31,10 @@ frontend rpc
 {{CORS_LINES}}
     option http-buffer-request
     acl is_broadcast req.body -m sub broadcast_transaction
+    acl is_websocket hdr(upgrade) -i websocket
+{{CAPTURE_LINES}}
 {{STATUS_ROUTE_LINES}}
+    use_backend be_ws if is_websocket
     use_backend be_broadcast if is_broadcast
     default_backend be_read
 
@@ -43,7 +47,7 @@ backend be_read
     retry-on conn-failure empty-response 502 503 504
     retries 2
     option redispatch 1
-    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check
+    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check{{NODE_LIMIT}}
 {{SERVER_LINES}}
 
 # A timed-out broadcast may already be in the mempool, so only retry when the connection never opened.
@@ -54,7 +58,18 @@ backend be_broadcast
     retry-on conn-failure
     retries 2
     option redispatch 1
-    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check
+    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s observe layer7 error-limit 5 on-error fail-check{{NODE_LIMIT}}
+{{SERVER_LINES}}
+
+# WebSockets hold a connection for their whole life, so they skip the per-node limit.
+backend be_ws
+    balance leastconn
+    option httpchk GET /
+    http-check expect status 200
+    retry-on conn-failure
+    retries 2
+    option redispatch 1
+    default-server inter 3s fastinter 1s fall 2 rise 3 slowstart 30s
 {{SERVER_LINES}}
 
 {{STATUS_BACKEND_LINES}}

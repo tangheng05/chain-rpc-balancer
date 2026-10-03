@@ -59,3 +59,12 @@ test('rejects status paths that could inject config', () => {
   assert.throws(() => normalize({ haproxy: { statusPath: '/a b' }, nodes: [node()] }), /statusPath/);
   assert.equal(normalize({ haproxy: { statusPath: '/lb-status' }, nodes: [node()] }).haproxy.statusPath, '/lb-status');
 });
+
+test('load limit and log capture settings are validated', () => {
+  const withHaproxy = (haproxy) => () => normalize({ haproxy, nodes: [{ name: 'n', host: '10.0.0.1' }] });
+  assert.throws(withHaproxy({ maxConnPerNode: 0 }), /maxConnPerNode/);
+  assert.throws(withHaproxy({ maxConnPerNode: 2.5 }), /maxConnPerNode/);
+  assert.throws(withHaproxy({ clientIpHeader: 'X Real IP' }), /clientIpHeader/);
+  assert.throws(withHaproxy({ logBodyBytes: 4096 }), /logBodyBytes/);
+  assert.doesNotThrow(withHaproxy({ maxConnPerNode: 4, clientIpHeader: 'CF-Connecting-IP', logBodyBytes: 200 }));
+});
