@@ -41,8 +41,10 @@ jobs:
       - name: haproxy -c
         run: |
           for f in haproxy.cfg haproxy-full.cfg; do
-            docker run --rm -v "$PWD/$f:/usr/local/etc/haproxy/haproxy.cfg:ro" \
-              haproxy:${{ matrix.haproxy }} haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+            out=$(docker run --rm -v "$PWD/$f:/usr/local/etc/haproxy/haproxy.cfg:ro" \
+              haproxy:${{ matrix.haproxy }} haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg 2>&1)
+            echo "$out"
+            if echo "$out" | grep -q WARNING; then echo "::error::$f has HAProxy warnings"; exit 1; fi
           done
 
   shellcheck:

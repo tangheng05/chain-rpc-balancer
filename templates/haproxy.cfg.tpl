@@ -30,6 +30,7 @@ frontend rpc
 {{CORS_LINES}}
     option http-buffer-request
     acl is_broadcast req.body -m sub broadcast_transaction
+{{STATUS_ROUTE_LINES}}
     use_backend be_broadcast if is_broadcast
     default_backend be_read
 

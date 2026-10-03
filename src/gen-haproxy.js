@@ -38,9 +38,9 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
         `    acl is_status path ${haproxy.statusPath}`,
         statusToken &&
           `    http-request deny deny_status 401 if is_status !{ req.hdr(x-status-token) -m str ${statusToken} }`,
-        '    use_backend be_status if is_status',
       ].filter(Boolean)
     : [];
+  const statusRoute = haproxy.statusPath ? ['    use_backend be_status if is_status'] : [];
   const statusBackend = haproxy.statusPath
     ? ['backend be_status', `    server agent ${agent.host}:${agent.statusPort}`, '']
     : [];
@@ -56,6 +56,7 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
     CORS_LINES: haproxy.cors ? corsLines(haproxy) : [],
     SERVER_LINES: servers,
     STATUS_FRONTEND_LINES: statusFrontend,
+    STATUS_ROUTE_LINES: statusRoute,
     STATUS_BACKEND_LINES: statusBackend,
     STATS_BIND: [haproxy.statsBind],
     STATS_AUTH: [`${haproxy.statsUser}:${password}`],
