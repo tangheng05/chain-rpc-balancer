@@ -26,6 +26,7 @@ const DEFAULTS = {
     maxConnPerNode: null,
     clientIpHeader: null,
     logBodyBytes: 0,
+    maxHistoryLimit: null,
   },
 };
 
@@ -89,6 +90,9 @@ function normalize(raw) {
   }
   if (!Number.isInteger(haproxy.logBodyBytes) || haproxy.logBodyBytes < 0 || haproxy.logBodyBytes > 1024) {
     fail('haproxy.logBodyBytes must be an integer from 0 to 1024');
+  }
+  if (haproxy.maxHistoryLimit !== null && !(Number.isInteger(haproxy.maxHistoryLimit) && haproxy.maxHistoryLimit > 0)) {
+    fail('haproxy.maxHistoryLimit must be a positive integer or null');
   }
 
   const seenNames = new Set();

@@ -22,6 +22,38 @@ function corsLines({ corsCredentials }) {
     .map((l) => `    ${l}`);
 }
 
+// Regex alternation matching any whole non-negative integer greater than n.
+function greaterThan(n) {
+  const s = String(n);
+  const alts = [`[1-9][0-9]{${s.length},}`];
+  for (let i = 0; i < s.length; i++) {
+    const d = Number(s[i]);
+    const rest = s.length - i - 1;
+    if (d < 9) alts.push(`${s.slice(0, i)}[${d + 1}-9]${rest ? `[0-9]{${rest}}` : ''}`);
+  }
+  return `(${alts.join('|')})`;
+}
+
+// Matches get_account_history(account, from, limit) with limit > max, in both
+// "call" and "condenser_api.get_account_history" forms. No backslashes, so it
+// reads the same in PCRE and POSIX regex builds.
+function historyLimitPattern(max) {
+  const sp = '[[:space:]]*';
+  return `get_account_history"[^[]*[[]${sp}"[^"]*"${sp},${sp}"?-?[0-9]+"?${sp},${sp}"?${greaterThan(max)}"?${sp}[]]`;
+}
+
+function historyLimitLines(max) {
+  const error = JSON.stringify({
+    jsonrpc: '2.0',
+    error: { code: -32602, message: `get_account_history limit must be ${max} or less; page with the from argument` },
+    id: null,
+  });
+  return [
+    `    acl history_too_big req.body -m reg '${historyLimitPattern(max)}'`,
+    `    http-request return status 200 content-type application/json string '${error}' if history_too_big`,
+  ];
+}
+
 function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = process.env } = {}) {
   const { agent, haproxy, nodes } = config;
   const password = env.STATS_PASSWORD || haproxy.statsPassword;
@@ -60,6 +92,7 @@ function render(config, { template = fs.readFileSync(TEMPLATE, 'utf8'), env = pr
     CORS_LINES: haproxy.cors ? corsLines(haproxy) : [],
     SERVER_LINES: servers,
     CAPTURE_LINES: captures,
+    HISTORY_LIMIT_LINES: haproxy.maxHistoryLimit ? historyLimitLines(haproxy.maxHistoryLimit) : [],
     NODE_LIMIT: haproxy.maxConnPerNode ? [` maxconn ${haproxy.maxConnPerNode}`] : [],
     STATUS_FRONTEND_LINES: statusFrontend,
     STATUS_ROUTE_LINES: statusRoute,
@@ -96,4 +129,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { render };
+module.exports = { render, historyLimitPattern };

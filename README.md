@@ -110,6 +110,7 @@ All values are validated before anything is generated, and anything that could b
 - `cors` (on by default) reflects the caller's `Origin` and answers `OPTIONS` preflights at the balancer, so browser dapps can call the API directly. Set `corsCredentials` only if browser clients send cookies or auth headers with `credentials: "include"`; with a reflected origin it lets any site make credentialed requests.
 - `maxConnPerNode` caps how many requests HAProxy sends to one node at once; the rest wait in HAProxy for up to 10s. On steemd most reads share one database thread, so a burst of heavy queries can freeze every node; a small cap (4–8) keeps each node responsive. Off by default.
 - `clientIpHeader` logs the real client IP when a CDN sits in front, e.g. `"CF-Connecting-IP"` for Cloudflare. `logBodyBytes` logs the first N bytes of each request body (up to 1024), which shows the API method being called. Both appear in braces near the end of each HAProxy log line.
+- `maxHistoryLimit` rejects `get_account_history` calls asking for more than N operations (e.g. `1000`) with a JSON-RPC error, before they reach a node. A single 10000-op call can return 15 MB+ and stall a steemd node for many seconds; callers can still page back with the `from` argument. Off by default.
 - `health.payload` sets the JSON-RPC request the agent sends. The default uses the legacy `call` API, which works on older steemd builds:
 
   ```json

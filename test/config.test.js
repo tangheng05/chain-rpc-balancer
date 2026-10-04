@@ -66,5 +66,7 @@ test('load limit and log capture settings are validated', () => {
   assert.throws(withHaproxy({ maxConnPerNode: 2.5 }), /maxConnPerNode/);
   assert.throws(withHaproxy({ clientIpHeader: 'X Real IP' }), /clientIpHeader/);
   assert.throws(withHaproxy({ logBodyBytes: 4096 }), /logBodyBytes/);
+  assert.throws(withHaproxy({ maxHistoryLimit: 0 }), /maxHistoryLimit/);
+  assert.throws(withHaproxy({ maxHistoryLimit: '1000' }), /maxHistoryLimit/);
   assert.doesNotThrow(withHaproxy({ maxConnPerNode: 4, clientIpHeader: 'CF-Connecting-IP', logBodyBytes: 200 }));
 });

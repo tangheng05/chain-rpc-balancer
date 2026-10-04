@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
-const { render } = require('../src/gen-haproxy');
+const { render, historyLimitPattern } = require('../src/gen-haproxy');
 const { loadConfig, normalize } = require('../src/config');
 
 const example = loadConfig(path.join(__dirname, '..', 'nodes.example.json'));
@@ -84,4 +84,37 @@ test('client IP header and request body are captured for the log when set', () =
   assert.doesNotMatch(render(oneNode(), { env: {} }), /http-request capture/);
   const cfg = render(oneNode({ clientIpHeader: 'CF-Connecting-IP', logBodyBytes: 200 }), { env: {} });
   assert.match(cfg, /http-request capture req.hdr\(CF-Connecting-IP\) len 46\n {4}http-request capture req.body len 200\n/);
+});
+
+test('history limit rule is off by default and runs after the log captures', () => {
+  assert.doesNotMatch(render(oneNode(), { env: {} }), /history_too_big/);
+  const cfg = render(oneNode({ maxHistoryLimit: 1000, logBodyBytes: 200 }), { env: {} });
+  assert.match(cfg, /capture req.body len 200\n {4}acl history_too_big req.body -m reg '[^'\n]+'\n {4}http-request return status 200 /);
+  const body = cfg.match(/string '([^']+)' if history_too_big/)[1];
+  assert.match(JSON.parse(body).error.message, /limit must be 1000 or less/);
+});
+
+test('history limit pattern only matches get_account_history over the limit', () => {
+  // HAProxy regex syntax -> JS: POSIX space class, and "]" as a literal class.
+  const re = new RegExp(historyLimitPattern(1000).replaceAll('[[:space:]]', '\\s').replaceAll('[]]', '\\]'));
+  const call = (api, args) => JSON.stringify({ id: 0, jsonrpc: '2.0', method: 'call', params: [api, 'get_account_history', args] });
+  const blocked = [
+    call('condenser_api', ['evgeniy', -1, 10000]),
+    call('database_api', ['a', 107947, 1001]),
+    call('condenser_api', ['a', -1, 9999]),
+    call('condenser_api', ['a', -1, 2000]),
+    call('condenser_api', ['a', '-1', '5000']),
+    '{"method":"call","params":["condenser_api","get_account_history",["a", -1, 10000]]}',
+    '{"jsonrpc":"2.0","method":"condenser_api.get_account_history","params":["a",-1,10000],"id":1}',
+  ];
+  const allowed = [
+    call('condenser_api', ['a', -1, 1000]),
+    call('condenser_api', ['a', -1, 100]),
+    call('condenser_api', ['a', 50000, 20]),
+    call('database_api', ['cexius', -1, 1]),
+    '{"method":"call","params":["condenser_api","get_discussions_by_blog",[{"tag":"a","limit":10000}]]}',
+    '{"method":"call","params":["condenser_api","get_block",[47659057]]}',
+  ];
+  for (const b of blocked) assert.match(b, re);
+  for (const b of allowed) assert.doesNotMatch(b, re);
 });

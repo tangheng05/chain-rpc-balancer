@@ -33,6 +33,7 @@ frontend rpc
     acl is_broadcast req.body -m sub broadcast_transaction
     acl is_websocket hdr(upgrade) -i websocket
 {{CAPTURE_LINES}}
+{{HISTORY_LIMIT_LINES}}
 {{STATUS_ROUTE_LINES}}
     use_backend be_ws if is_websocket
     use_backend be_broadcast if is_broadcast
